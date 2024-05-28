@@ -233,6 +233,71 @@ framework::conv2d::conv2d(layer* p, int cout, int ks, int stride, int pad, bool 
 #endif
 }
 
+#ifdef USE_CUDNN_CONVOLUTION
+void framework::conv2d::run()
+{
+    cudnnHandle_t handle;
+    cudnnCreate(&handle);
+
+    cudnnDataType_t dtype = CUDNN_DATA_FLOAT;
+    cudnnTensorFormat_t format = CUDNN_TENSOR_NCHW;
+    
+    cudnnTensorDescriptor_t prvMEM_desc;
+    cudnnTensorDescriptor_t gMEM_desc;
+    cudnnCreateTensorDescriptor(&prvMEM_desc);
+    cudnnCreateTensorDescriptor(&gMEM_desc);
+    cudnnSetTensor4dDescriptor(prvMEM_desc, format, dtype, prvShape.N, prvShape.C, prvShape.H, prvShape.W);
+    cudnnSetTensor4dDescriptor(gMEM_desc, format, dtype, shape.N, shape.C, shape.H, shape.W);
+
+    cudnnFilterDescriptor_t W_desc;
+    cudnnCreateFilterDescriptor(&W_desc);
+    cudnnSetFilter4dDescriptor(W_desc, dtype, format, shape.C, prvShape.C, kSize, kSize);
+
+    cudnnConvolutionDescriptor_t conv2d_desc;
+    cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
+
+    cudnnCreateConvolutionDescriptor(&conv2d_desc);
+    cudnnSetConvolution2dDescriptor(conv2d_desc, padSize, padSize, stride, stride, 1, 1, mode, dtype);
+
+    cudnnConvolutionFwdAlgo_t algo;
+#if CUDNN_MAJOR == 8
+    cudnnConvolutionFwdAlgoPerf_t algos[CUDNN_CONVOLUTION_FWD_ALGO_COUNT];
+    cudnnGetConvolutionForwardAlgorithm_v7(handle, prvMEM_desc, W_desc, conv2d_desc, gMEM_desc, CUDNN_CONVOLUTION_FWD_ALGO_COUNT, nullptr, algos);
+    algo = algos[0].algo;
+#else
+    cudnnGetConvolutionForwardAlgorithm(handle, prvMEM_desc, W_desc, conv2d_desc, gMEM_desc, CUDNN_CONVOLUTION_FWD_PREFER_FASTEST, nullptr, algo)
+#endif
+    size_t workspaceBytes = 0;
+    cudnnGetConvolutionForwardWorkspaceSize(handle, prvMEM_desc, W_desc, conv2d_desc, gMEM_desc, algo, &workspaceBytes);
+#ifdef __DEBUG__
+    printf("CUDNN info from %s\nWorkspace size: %zuMB\n", name.c_str(), (workspaceBytes / 1048576));
+#endif
+    cudaError_t error_id;
+    void* workspaceMEM = nullptr;
+    error_id = cudaMalloc(&workspaceMEM, workspaceBytes);
+    if (error_id != cudaSuccess) {
+        printf("Error %s cudaMalloc() : %d\n%s\n\n", name.c_str(), static_cast<int>(error_id), cudaGetErrorString(error_id));
+		exit(EXIT_FAILURE);
+    }
+
+    const float alpha = 1.0f, beta = 0.0f;
+    float* prvMEM = prvLayer->getGPUMem();
+
+    if (useBias) {
+#ifdef __DEBUG__
+        printf("Using bias has not implemented yet. Fall back to non cuDNN implementation\n");
+#endif
+        int sharedMem = kSize * kSize * prvShape.C * dimBlock.z * sizeof(float);
+        Conv2D_shared<<<dimGrid, dimBlock, sharedMem>>>(prvShape.H, prvShape.W, prvShape.C, shape.H, shape.W, shape.C, shape.N, stride, kSize, padSize, prvMEM, wMEM, bMEM, gMEM);
+    }
+    else {
+        cudnnConvolutionForward(handle, &alpha, prvMEM_desc, prvMEM, W_desc, wMEM, conv2d_desc, algo, workspaceMEM, workspaceBytes, &beta, gMEM_desc, gMEM);
+    }
+
+    cudaFree(workspaceMEM);
+    cudnnDestroy(handle);
+}
+#else
 /**
  * @brief Launch Kernel with Hyperparameter set in constructor.
  * 
@@ -261,6 +326,7 @@ void framework::conv2d::run()
 		exit(EXIT_FAILURE);
 	}
 }
+#endif
 
 /**
  * @brief Set layer weight & bias parameter

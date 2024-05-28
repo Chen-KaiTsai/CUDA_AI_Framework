@@ -64,6 +64,39 @@ framework::relu6::relu6(layer* p, bool inplace_, dim3 blockSize)
 #endif
 }
 
+#ifdef USE_CUDNN_ACTIVATION
+void framework::relu6::run()
+{
+    cudnnHandle_t handle;
+    cudnnCreate(&handle);
+    
+    cudnnDataType_t dtype = CUDNN_DATA_FLOAT;
+    cudnnTensorFormat_t format = CUDNN_TENSOR_NCHW;
+    cudnnTensorDescriptor_t prvMEM_desc;
+    cudnnTensorDescriptor_t gMEM_desc;
+
+    cudnnCreateTensorDescriptor(&prvMEM_desc);
+    cudnnCreateTensorDescriptor(&gMEM_desc);
+
+    cudnnSetTensor4dDescriptor(prvMEM_desc, format, dtype, shape.N, shape.C, shape.H, shape.W);
+    cudnnSetTensor4dDescriptor(gMEM_desc, format, dtype, shape.N, shape.C, shape.H, shape.W);
+
+    cudnnActivationDescriptor_t relu6_desc;
+    cudnnActivationMode_t mode = CUDNN_ACTIVATION_CLIPPED_RELU;
+    cudnnNanPropagation_t prop = CUDNN_NOT_PROPAGATE_NAN;
+    cudnnCreateActivationDescriptor(&relu6_desc);
+    cudnnSetActivationDescriptor(relu6_desc, mode, prop, 6.0f);
+
+    float alpha[1] = {1.0f};
+    float beta[1] = {0.0f};
+
+    float* prvMEM = prvLayer->getGPUMem();
+    cudnnActivationForward(handle, relu6_desc, alpha, prvMEM_desc, prvMEM, beta, gMEM_desc, gMEM);
+
+    cudaDeviceSynchronize();
+    cudnnDestroy(handle);
+}
+#else
 void framework::relu6::run()
 {
     cudaError_t error_id;
@@ -77,5 +110,6 @@ void framework::relu6::run()
 		exit(EXIT_FAILURE);
 	}
 }
+#endif
 
 size_t framework::relu6::setParam(float* buffer) { return 0; }

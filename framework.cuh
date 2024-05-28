@@ -15,6 +15,14 @@
  * @brief fix getArgumentReference reporting wrong jobSize
  * @date 2023-11-22
  * 
+ * @version 1.7 beta
+ * @brief create cuDNN version activation functions
+ * @date 2024-05-19
+ * 
+ * @version 1.8 beta
+ * @brief finish some cuDNN version of convolution; however, the performance is significantly worse than non cuDNN version.
+ * @date 2024-05-28
+ * @note cuDNN version of activation functions and convolution layers are significantly worse in performance. further invastigation is needed.
  */
 
 #ifndef INCLUDE_FRAMEWORK_H_
@@ -23,6 +31,8 @@
 #include <cuda_runtime.h>
 #include <cuda.h>
 #include <helper_cuda.h>
+
+#include <cudnn.h>
 
 #include <cstdio>
 #include <algorithm>
@@ -41,6 +51,8 @@
 
 // #define __DEBUG__
 // #define __KERNEL_DEBUG__
+// #define USE_CUDNN_ACTIVATION
+// #define USE_CUDNN_CONVOLUTION
 
 #define EPSILON (1e-5)
 
