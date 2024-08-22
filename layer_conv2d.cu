@@ -72,7 +72,7 @@ __global__ void Conv2D_cout(int inputH, int inputW, int cin, int outputH, int ou
                     
                     int hp = height * stride + kh - pad;
                     int wp = width  * stride + kw - pad;
-                    if(hp >= 0 && wp >= 0 && hp < inputH && wp < inputW)
+                    if((unsigned int)hp < (unsigned int)inputH && (unsigned int)wp < (unsigned int)inputW)
                         sum += W[cOut * wSubSize + indexW] * X[N * xOneBatchSize + cIn * xMapSize + hp * inputW + wp];
                 }
             }
@@ -165,7 +165,8 @@ __global__ void Conv2D_shared(int inputH, int inputW, int cin, int outputH, int 
                 {
                     int hp = height * stride + kh - pad;
                     int wp = width  * stride + kw - pad;
-                    if(hp >= 0 && wp >= 0 && hp < inputH && wp < inputW)
+                    //if(hp >= 0 && wp >= 0 && hp < inputH && wp < inputW)
+                    if((unsigned int)hp < (unsigned int)inputH && (unsigned int)wp < (unsigned int)inputW)
                         sum += sharedWeight[threadIdx.z * wSubSize + indexW] * X[N * xOneBatchSize + cIn * xMapSize + hp * inputW + wp];
                 }
             }
